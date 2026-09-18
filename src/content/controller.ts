@@ -4,6 +4,7 @@ import {
   getIsPipSupported,
   hideLauncherButton,
   openPipSession,
+  setLauncherMessage,
   showLauncherButton,
 } from './pipHost';
 import type { PipSession } from './pipHost';
@@ -14,10 +15,18 @@ import type {
   ContentRequest,
   LrcLine,
   NowPlayingState,
+  OverlayFailure,
   OverlayOpenResult,
   TrackInfo,
   WorkerRequest,
 } from '../lib/types';
+
+/** Shown on the launcher itself, so a failed click is never silent. */
+const LAUNCHER_FAILURE_COPY: Record<OverlayFailure, string> = {
+  gesture_required: 'Click once more to open',
+  no_player: 'Nothing playing yet',
+  unsupported: 'Needs Chromium 116+ with Document Picture-in-Picture',
+};
 
 /** A duration this far from the matched record means the timings will not fit. */
 const DURATION_MISMATCH_TOLERANCE_SEC = 3;
@@ -138,9 +147,17 @@ function paintFrame(): void {
 /**
  * The render loop. `paintFrame` reads `currentTime` in the same context and on
  * the same frame it paints, so there is no clock to reconcile and no drift.
+ *
+ * Scheduled on the PiP window's own `requestAnimationFrame`, not the opener
+ * tab's: Chromium throttles a hidden tab's rAF to near-zero, but a Document
+ * PiP window stays visible — and unthrottled — precisely so an overlay like
+ * this keeps updating while the user is on a different tab or app. Scheduling
+ * on the tab's rAF instead is what freezes the overlay on one line until the
+ * tab is refocused.
  */
 function runFrameLoop(): void {
-  if (state.session === null) {
+  const { session } = state;
+  if (session === null) {
     return;
   }
   paintFrame();
@@ -150,21 +167,22 @@ function runFrameLoop(): void {
     frameHandle = null;
     return;
   }
-  frameHandle = requestAnimationFrame(runFrameLoop);
+  frameHandle = session.window.requestAnimationFrame(runFrameLoop);
 }
 
 function startFrameLoop(): void {
-  if (frameHandle !== null || state.session === null) {
+  const { session } = state;
+  if (frameHandle !== null || session === null) {
     return;
   }
-  frameHandle = requestAnimationFrame(runFrameLoop);
+  frameHandle = session.window.requestAnimationFrame(runFrameLoop);
 }
 
 function stopFrameLoop(): void {
-  if (frameHandle !== null) {
-    cancelAnimationFrame(frameHandle);
-    frameHandle = null;
+  if (frameHandle !== null && state.session !== null) {
+    state.session.window.cancelAnimationFrame(frameHandle);
   }
+  frameHandle = null;
 }
 
 function attachMediaListeners(video: HTMLVideoElement): () => void {
@@ -306,7 +324,27 @@ function refreshLauncher(): void {
     hideLauncherButton();
     return;
   }
-  showLauncherButton(() => void openOverlay());
+
+  if (!getIsPipSupported()) {
+    // Some Chromium builds, including certain Brave configurations, withhold
+    // Document PiP. Say so on the button rather than offering a click that
+    // cannot work.
+    showLauncherButton(
+      () => setLauncherMessage(LAUNCHER_FAILURE_COPY.unsupported),
+      '♪ Floating overlay unavailable',
+    );
+    return;
+  }
+
+  showLauncherButton(() => void handleLauncherClick());
+}
+
+/** Opens the overlay and, if that fails, explains why on the button. */
+async function handleLauncherClick(): Promise<void> {
+  const result = await openOverlay();
+  if (!result.isOpen && result.reason !== null) {
+    setLauncherMessage(LAUNCHER_FAILURE_COPY[result.reason]);
+  }
 }
 
 function teardownSession(): void {
@@ -336,7 +374,8 @@ async function openOverlay(): Promise<OverlayOpenResult> {
 
   if (outcome.session === null) {
     if (outcome.reason === 'gesture_required') {
-      showLauncherButton(() => void openOverlay());
+      // Activation did not reach the content script; offer a real gesture.
+      showLauncherButton(() => void handleLauncherClick());
     }
     return { isOpen: false, reason: outcome.reason };
   }

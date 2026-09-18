@@ -4,6 +4,7 @@ import type {
   NowPlayingState,
   OverlayFailure,
   OverlayOpenResult,
+  TrackInfo,
   WorkerRequest,
 } from '../lib/types';
 
@@ -27,8 +28,17 @@ const elements = {
   plainText: query('plain-text'),
   scale: query<HTMLInputElement>('scale'),
   scaleOut: query<HTMLOutputElement>('scale-out'),
+  searchHint: query('search-hint'),
+  searchLink: query<HTMLAnchorElement>('search-link'),
   status: query('status'),
 };
+
+/** No API found lyrics; hand the user off to a normal browser search. */
+function buildGoogleSearchUrl(track: TrackInfo): string {
+  const url = new URL('https://www.google.com/search');
+  url.searchParams.set('q', `${track.artist} ${track.title} lyrics`);
+  return url.toString();
+}
 
 async function sendToWorker<T>(request: WorkerRequest): Promise<T | null> {
   try {
@@ -47,10 +57,12 @@ const STATUS_COPY: Record<LyricsStatus, { text: string; tone: string }> = {
 
 const FAILURE_COPY: Record<OverlayFailure, string> = {
   gesture_required:
-    'Chrome needs a click on the page itself. Look for the “Show lyrics overlay” button on YouTube Music.',
-  no_player: 'Open a YouTube Music tab and start playing something first.',
+    'Your browser needs a click on the page itself. Look for the “♪ Show lyrics overlay” button near the player.',
+  no_player: 'Open a YouTube or YouTube Music tab and start playing something first.',
+  // Document PiP needs Chromium 116+, and some builds (certain Brave
+  // configurations) withhold it even at that version.
   unsupported:
-    'This Chrome build does not support Document Picture-in-Picture (needs Chrome 116+).',
+    'This browser does not support floating Picture-in-Picture windows. It needs a Chromium 116+ build with Document Picture-in-Picture enabled.',
 };
 
 function renderState(state: NowPlayingState | null): void {
@@ -59,6 +71,7 @@ function renderState(state: NowPlayingState | null): void {
     elements.status.textContent = 'Waiting for YouTube Music…';
     elements.status.dataset.tone = 'neutral';
     elements.plainSection.hidden = true;
+    elements.searchHint.hidden = true;
     return;
   }
 
@@ -70,7 +83,13 @@ function renderState(state: NowPlayingState | null): void {
     elements.status.dataset.tone = 'neutral';
   } else {
     const copy = STATUS_COPY[status];
-    elements.status.textContent = copy.text;
+    // Attribute untimed text that came from the fallback source rather than
+    // LRCLIB, so the panel is not silently mixing two providers' output.
+    const suffix =
+      status === 'plain_only' && state.lyrics?.source === 'lyrics.ovh'
+        ? ' (via lyrics.ovh)'
+        : '';
+    elements.status.textContent = `${copy.text}${suffix}`;
     elements.status.dataset.tone = copy.tone;
   }
 
@@ -80,6 +99,14 @@ function renderState(state: NowPlayingState | null): void {
   elements.plainSection.hidden = !shouldShowPlain;
   if (shouldShowPlain) {
     elements.plainText.textContent = plain;
+  }
+
+  // Neither API had anything: hand off to a normal browser search instead of
+  // leaving a dead end.
+  const shouldShowSearchLink = status === 'not_found';
+  elements.searchHint.hidden = !shouldShowSearchLink;
+  if (shouldShowSearchLink) {
+    elements.searchLink.href = buildGoogleSearchUrl(state.track);
   }
 }
 

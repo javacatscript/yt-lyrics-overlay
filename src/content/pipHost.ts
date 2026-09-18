@@ -78,15 +78,21 @@ export async function openPipSession(
  * Injected only after the browser has actually refused, so it never appears if
  * activation does propagate from the side panel.
  */
-export function showLauncherButton(onClick: () => void): void {
-  if (document.getElementById(LAUNCHER_ID) !== null) {
+export function showLauncherButton(
+  onClick: () => void,
+  label = '♪ Show lyrics',
+): void {
+  const existing = document.getElementById(LAUNCHER_ID);
+  if (existing !== null) {
+    existing.textContent = label;
+    existing.dataset.label = label;
     return;
   }
 
   const button = document.createElement('button');
   button.id = LAUNCHER_ID;
   button.type = 'button';
-  button.textContent = '♪ Show lyrics overlay';
+  button.textContent = label;
   button.setAttribute(
     'style',
     [
@@ -105,12 +111,34 @@ export function showLauncherButton(onClick: () => void): void {
     ].join(';'),
   );
 
-  button.addEventListener('click', () => {
-    button.remove();
-    onClick();
-  });
+  // Deliberately does NOT remove itself on click: a click that fails must
+  // leave something on screen to explain why.
+  button.dataset.label = label;
+  button.addEventListener('click', () => onClick());
 
   document.body.append(button);
+}
+
+const LAUNCHER_MESSAGE_MS = 3600;
+let messageTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Shows a short explanation on the launcher, then restores its label. */
+export function setLauncherMessage(message: string): void {
+  const button = document.getElementById(LAUNCHER_ID);
+  if (button === null) {
+    return;
+  }
+
+  button.textContent = message;
+  if (messageTimer !== undefined) {
+    clearTimeout(messageTimer);
+  }
+  messageTimer = setTimeout(() => {
+    const current = document.getElementById(LAUNCHER_ID);
+    if (current !== null) {
+      current.textContent = current.dataset.label ?? '♪ Show lyrics';
+    }
+  }, LAUNCHER_MESSAGE_MS);
 }
 
 export function hideLauncherButton(): void {

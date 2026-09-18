@@ -38,6 +38,10 @@ body {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  /* Also rendered as a normal tab where the side panel API is unavailable,
+     so cap the measure rather than letting it stretch across a full window. */
+  margin: 0 auto;
+  max-width: 420px;
   padding: 16px 14px 22px;
 }
 

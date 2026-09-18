@@ -146,14 +146,20 @@ describe('createLyricsResolver', () => {
     nowMs = 1_000_000;
   });
 
-  /** Responds from a queue keyed by pathname, recording every URL requested. */
-  function buildFetch(
-    handlers: Partial<Record<'/api/get' | '/api/search', () => Response>>,
-  ): typeof fetch {
+  type FetchRoute = '/api/get' | '/api/search' | 'lyrics.ovh';
+
+  /**
+   * Responds from a queue keyed by route, recording every URL requested.
+   * lyrics.ovh's path is dynamic (`/v1/{artist}/{title}`), so it is matched by
+   * host rather than by exact pathname.
+   */
+  function buildFetch(handlers: Partial<Record<FetchRoute, () => Response>>): typeof fetch {
     return vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
       requestedUrls.push(url.toString());
-      const handler = handlers[url.pathname as '/api/get' | '/api/search'];
+      const pathname = url.pathname as '/api/get' | '/api/search';
+      const route: FetchRoute = url.hostname === 'api.lyrics.ovh' ? 'lyrics.ovh' : pathname;
+      const handler = handlers[route];
       if (handler === undefined) {
         return new Response(null, { status: 404 });
       }
@@ -169,6 +175,7 @@ describe('createLyricsResolver', () => {
     await cache.set(buildTrackKey(TRACK), {
       fetchedAtMs: nowMs,
       record: buildRecord(),
+      source: 'lrclib',
     });
     const fetchFn = buildFetch({});
 
@@ -220,6 +227,26 @@ describe('createLyricsResolver', () => {
     ]);
   });
 
+  test('falls back to search when /api/get finds a row with no lyric text', async () => {
+    // LRCLIB is crowd-sourced: an exact-match row can exist (right artist,
+    // title, album and duration) with both lyric fields still empty, while a
+    // different album pressing turned up by search has the real lyrics.
+    const emptyExactMatch = buildRecord({ plainLyrics: null, syncedLyrics: null });
+    const searchHit = buildRecord({ duration: 201 });
+    const fetchFn = buildFetch({
+      '/api/get': () => new Response(JSON.stringify(emptyExactMatch), { status: 200 }),
+      '/api/search': () => new Response(JSON.stringify([searchHit]), { status: 200 }),
+    });
+
+    const result = await buildResolver(fetchFn).getLyrics(TRACK);
+
+    expect(result.status).toBe('synced');
+    expect(requestedUrls.map((url) => new URL(url).pathname)).toEqual([
+      '/api/get',
+      '/api/search',
+    ]);
+  });
+
   test('reports not_found when search returns only mismatched durations', async () => {
     const fetchFn = buildFetch({
       '/api/get': () => new Response(null, { status: 404 }),
@@ -233,10 +260,56 @@ describe('createLyricsResolver', () => {
     expect(result.record).toBeNull();
   });
 
-  test('negative-caches a total miss', async () => {
+  test('falls back to lyrics.ovh when LRCLIB has nothing at all', async () => {
     const fetchFn = buildFetch({
       '/api/get': () => new Response(null, { status: 404 }),
       '/api/search': () => new Response(JSON.stringify([]), { status: 200 }),
+      'lyrics.ovh': () =>
+        new Response(JSON.stringify({ lyrics: 'Yeah\nI have been tryna call' }), {
+          status: 200,
+        }),
+    });
+
+    const result = await buildResolver(fetchFn).getLyrics(TRACK);
+
+    expect(result.status).toBe('plain_only');
+    expect(result.source).toBe('lyrics.ovh');
+    expect(result.record?.plainLyrics).toBe('Yeah\nI have been tryna call');
+    expect(result.record?.syncedLyrics).toBeNull();
+
+    const entry = await cache.get(buildTrackKey(TRACK));
+    expect(entry?.source).toBe('lyrics.ovh');
+  });
+
+  test('does not query lyrics.ovh once LRCLIB already found a record', async () => {
+    const fetchFn = buildFetch({
+      '/api/get': () => new Response(JSON.stringify(buildRecord()), { status: 200 }),
+      'lyrics.ovh': () => new Response(JSON.stringify({ lyrics: 'unused' }), { status: 200 }),
+    });
+
+    await buildResolver(fetchFn).getLyrics(TRACK);
+
+    expect(requestedUrls.map((url) => new URL(url).hostname)).not.toContain('api.lyrics.ovh');
+  });
+
+  test('propagates a lyrics.ovh network failure without caching', async () => {
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      if (url.hostname === 'api.lyrics.ovh') {
+        throw new Error('offline');
+      }
+      return new Response(null, { status: 404 });
+    }) as unknown as typeof fetch;
+
+    await expect(buildResolver(fetchFn).getLyrics(TRACK)).rejects.toThrow('offline');
+    expect(cache.size).toBe(0);
+  });
+
+  test('negative-caches a total miss across every source', async () => {
+    const fetchFn = buildFetch({
+      '/api/get': () => new Response(null, { status: 404 }),
+      '/api/search': () => new Response(JSON.stringify([]), { status: 200 }),
+      'lyrics.ovh': () => new Response(null, { status: 404 }),
     });
 
     await buildResolver(fetchFn).getLyrics(TRACK);
@@ -244,10 +317,11 @@ describe('createLyricsResolver', () => {
     const entry = await cache.get(buildTrackKey(TRACK));
     expect(entry).not.toBeNull();
     expect(entry?.record).toBeNull();
+    expect(entry?.source).toBeNull();
   });
 
   test('honours a fresh negative cache without fetching', async () => {
-    await cache.set(buildTrackKey(TRACK), { fetchedAtMs: nowMs, record: null });
+    await cache.set(buildTrackKey(TRACK), { fetchedAtMs: nowMs, record: null, source: null });
     const fetchFn = buildFetch({});
 
     const result = await buildResolver(fetchFn).getLyrics(TRACK);
@@ -260,6 +334,7 @@ describe('createLyricsResolver', () => {
     await cache.set(buildTrackKey(TRACK), {
       fetchedAtMs: nowMs - NEGATIVE_CACHE_TTL_MS - 1,
       record: null,
+      source: null,
     });
     const fetchFn = buildFetch({
       '/api/get': () => new Response(JSON.stringify(buildRecord()), { status: 200 }),

@@ -24,9 +24,13 @@ export interface LrclibRecord {
 
 export type LyricsStatus = 'instrumental' | 'not_found' | 'plain_only' | 'synced';
 
+/** Which provider a resolved record came from, LRCLIB or a fallback. */
+export type LyricsSource = 'lrclib' | 'lyrics.ovh';
+
 /** Resolved lyrics for a track, plus how usable they turned out to be. */
 export interface LyricsResult {
   record: LrclibRecord | null;
+  source: LyricsSource | null;
   status: LyricsStatus;
 }
 
@@ -34,6 +38,7 @@ export interface LyricsResult {
 export interface CacheEntry {
   fetchedAtMs: number;
   record: LrclibRecord | null;
+  source: LyricsSource | null;
 }
 
 /** Storage port, so the resolver can be tested without `chrome.storage`. */

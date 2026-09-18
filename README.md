@@ -12,8 +12,29 @@ you an always-on-top window containing arbitrary DOM. Lyrics come from
 
 ## Requirements
 
-- Chrome 116+ (Document PiP)
+- A Chromium browser at 116+ with Document Picture-in-Picture — Chrome, Edge,
+  **Brave**, Vivaldi, Opera
 - Node 22+
+
+### Brave and other Chromium builds
+
+Loads and runs the same way as in Chrome, but two APIs are optional across
+Chromium builds and the extension feature-detects both rather than assuming:
+
+| API | If missing |
+| --- | --- |
+| `chrome.sidePanel` | The toolbar icon opens the same controls page in a normal tab. Brave ships its own sidebar and can withhold the extension API. |
+| `documentPictureInPicture` | The launcher button says so plainly instead of clicking into nothing. There is no floating window without it. |
+
+`chrome.sidePanel` needed real care: calling a method on an absent namespace
+throws a **synchronous** `TypeError`, which no `.catch()` on the returned
+promise can rescue. It is checked with `typeof chrome.sidePanel?.open ===
+'function'` before use.
+
+**If lyrics never load in Brave**, check Shields on the site — extension
+background requests are not normally filtered, but if `lrclib.net` is blocked
+the panel will show "lyrics unavailable". Brave's built-in ad blocking also
+makes the ad-detection path largely moot, which is no loss.
 
 ## Build and load
 

@@ -31,16 +31,31 @@ const resolver = createLyricsResolver({
   getNowMs: () => Date.now(),
 });
 
+const PANEL_PATH = 'src/sidepanel/panel.html';
+
+/**
+ * `chrome.sidePanel` is not guaranteed across Chromium builds — Brave ships
+ * its own sidebar and can withhold the extension API. Feature-detect rather
+ * than assume: calling a method on an absent namespace throws a *synchronous*
+ * TypeError, which no `.catch()` on the returned promise can rescue.
+ */
+function getIsSidePanelSupported(): boolean {
+  return typeof chrome.sidePanel?.open === 'function';
+}
+
 /**
  * Make the toolbar icon open the side panel.
  *
- * This must be re-applied on every worker start, not just on install: MV3
- * evicts the worker constantly, and reloading an unpacked extension does not
- * reliably fire `onInstalled`. A failure here is logged rather than swallowed,
- * because silently losing the only way into the UI is indistinguishable from
- * the extension being broken.
+ * Re-applied on every worker start, not just on install: MV3 evicts the worker
+ * constantly, and reloading an unpacked extension does not reliably fire
+ * `onInstalled`. Failures are logged rather than swallowed, because silently
+ * losing the way into the UI is indistinguishable from a broken extension.
  */
 async function enableActionOpensPanel(): Promise<void> {
+  if (!getIsSidePanelSupported()) {
+    // The onClicked handler below covers this case.
+    return;
+  }
   try {
     await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
   } catch (error) {
@@ -53,18 +68,32 @@ chrome.runtime.onStartup.addListener(() => void enableActionOpensPanel());
 void enableActionOpensPanel();
 
 /**
- * Fallback path. When `openPanelOnActionClick` is in effect Chrome opens the
- * panel itself and this never fires; when it is not, this is the only thing
- * that makes the toolbar icon do anything at all.
+ * Opens the controls, degrading rather than failing.
+ *
+ * Where the side panel exists this uses it. Where it does not, the same page
+ * opens in an ordinary tab — which matters because the in-page overlay toggle
+ * lives there, and that surface needs no special API, so it must stay
+ * reachable even on a browser with neither side panel nor Document PiP.
  */
-chrome.action.onClicked.addListener((tab) => {
-  if (tab.id === undefined) {
-    return;
+async function openControls(tabId: number | undefined): Promise<void> {
+  if (getIsSidePanelSupported() && tabId !== undefined) {
+    try {
+      await chrome.sidePanel.open({ tabId });
+      return;
+    } catch (error) {
+      console.warn('[lyrics-overlay] sidePanel.open failed, opening a tab', error);
+    }
   }
-  void chrome.sidePanel.open({ tabId: tab.id }).catch((error: unknown) => {
-    console.warn('[lyrics-overlay] sidePanel.open failed', error);
-  });
-});
+
+  await chrome.tabs.create({ url: chrome.runtime.getURL(PANEL_PATH) });
+}
+
+/**
+ * When `openPanelOnActionClick` is in effect the browser opens the panel
+ * itself and this never fires; otherwise this is the only thing that makes the
+ * toolbar icon do anything at all.
+ */
+chrome.action.onClicked.addListener((tab) => void openControls(tab.id));
 
 async function resolveNowPlaying(track: TrackInfo): Promise<NowPlayingState> {
   const trackKey = buildTrackKey(track);

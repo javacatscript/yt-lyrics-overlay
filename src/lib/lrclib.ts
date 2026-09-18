@@ -1,7 +1,9 @@
+import { requestLyricsOvh } from './lyricsOvh';
 import type {
   LrclibRecord,
   LyricsCache,
   LyricsResult,
+  LyricsSource,
   LyricsStatus,
   TrackInfo,
 } from './types';
@@ -168,10 +170,14 @@ export function createLyricsResolver(deps: ResolverDeps): {
     const cached = await deps.cache.get(key);
     if (cached !== null) {
       if (cached.record !== null) {
-        return { record: cached.record, status: deriveStatus(cached.record) };
+        return {
+          record: cached.record,
+          source: cached.source,
+          status: deriveStatus(cached.record),
+        };
       }
       if (deps.getNowMs() - cached.fetchedAtMs < NEGATIVE_CACHE_TTL_MS) {
-        return { record: null, status: 'not_found' };
+        return { record: null, source: null, status: 'not_found' };
       }
     }
 
@@ -182,11 +188,38 @@ export function createLyricsResolver(deps: ResolverDeps): {
 
     const pending = (async (): Promise<LyricsResult> => {
       const exact = await requestExact(track);
-      const record = exact ?? (await requestSearch(track));
+      // A row can exist (right artist/title/album/duration) yet still carry
+      // no lyric text — LRCLIB is crowd-sourced and some rows are metadata-only
+      // stubs. Treat that the same as a miss and fall back to search, which
+      // may surface a different pressing that actually has lyrics.
+      const lrclibRecord =
+        exact !== null && deriveStatus(exact) !== 'not_found'
+          ? exact
+          : await requestSearch(track);
+
+      let record = lrclibRecord;
+      let source: LyricsSource | null = record !== null ? 'lrclib' : null;
+
+      // LRCLIB has nothing at all: try a plain-text-only fallback before
+      // giving up. It has no duration to disambiguate with, so it is only
+      // consulted once the disambiguated LRCLIB lookup has already failed.
+      if (record === null) {
+        const ovhLyrics = await requestLyricsOvh(track, deps.fetchFn);
+        if (ovhLyrics !== null) {
+          record = {
+            duration: null,
+            instrumental: false,
+            plainLyrics: ovhLyrics,
+            syncedLyrics: null,
+          };
+          source = 'lyrics.ovh';
+        }
+      }
+
       // Only reached on success, so a network failure caches nothing and the
       // next attempt retries rather than reusing a rejection.
-      await deps.cache.set(key, { fetchedAtMs: deps.getNowMs(), record });
-      return { record, status: deriveStatus(record) };
+      await deps.cache.set(key, { fetchedAtMs: deps.getNowMs(), record, source });
+      return { record, source, status: deriveStatus(record) };
     })();
 
     inFlight.set(key, pending);

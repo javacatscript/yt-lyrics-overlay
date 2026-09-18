@@ -23,7 +23,7 @@ export default {
     'Real-time synced lyrics for YouTube Music in a window that floats above every tab.',
 
   permissions: ['storage', 'sidePanel'],
-  host_permissions: ['https://lrclib.net/*'],
+  host_permissions: ['https://lrclib.net/*', 'https://api.lyrics.ovh/*'],
 
   background: {
     service_worker: 'src/background/sw.ts',
