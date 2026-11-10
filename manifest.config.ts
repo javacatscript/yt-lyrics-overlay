@@ -25,6 +25,15 @@ export default {
   permissions: ['storage', 'sidePanel'],
   host_permissions: ['https://lrclib.net/*', 'https://api.lyrics.ovh/*'],
 
+  // Plain static files in `public/`, not build entry points, so these paths
+  // are left untouched rather than rewritten like the ones above.
+  icons: {
+    16: 'icons/icon16.png',
+    32: 'icons/icon32.png',
+    48: 'icons/icon48.png',
+    128: 'icons/icon128.png',
+  },
+
   background: {
     service_worker: 'src/background/sw.ts',
     type: 'module',
@@ -50,6 +59,11 @@ export default {
   },
 
   action: {
+    default_icon: {
+      16: 'icons/icon16.png',
+      32: 'icons/icon32.png',
+      48: 'icons/icon48.png',
+    },
     default_title: 'Lyrics Overlay',
   },
 };

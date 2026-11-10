@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lyrics Overlay — Privacy Policy</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        max-width: 680px;
+        margin: 0 auto;
+        padding: 40px 20px 80px;
+        font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      h1 {
+        font-size: 1.6rem;
+        margin-bottom: 0.2em;
+      }
+      h2 {
+        font-size: 1.1rem;
+        margin-top: 2em;
+      }
+      .updated {
+        color: #6b6b76;
+        font-size: 0.9rem;
+        margin-top: 0;
+      }
+      code {
+        background: rgba(127, 127, 127, 0.15);
+        padding: 0.1em 0.35em;
+        border-radius: 4px;
+        font-size: 0.9em;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1em 0;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid rgba(127, 127, 127, 0.25);
+        vertical-align: top;
+      }
+      th {
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: #6b6b76;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Lyrics Overlay — Privacy Policy</h1>
+    <p class="updated">Last updated: 2026-09-18</p>
+
+    <p>
+      Lyrics Overlay is a browser extension that shows real-time synced lyrics for
+      whatever you're playing on YouTube or YouTube Music, in a window that floats
+      above your other tabs and apps. This page explains what data the extension
+      touches, where it goes, and why.
+    </p>
+
+    <h2>What the extension reads from the page</h2>
+    <p>
+      While a video is playing on YouTube or YouTube Music, the extension reads the
+      track's title, artist, album (when available), and duration directly from the
+      page. That's the only information it collects, and it's used for exactly one
+      purpose: looking up matching lyrics.
+    </p>
+    <p>
+      The extension does not read your watch history, your account, your comments, or
+      anything else on the page. It has no access to any site other than
+      <code>youtube.com</code> and <code>music.youtube.com</code>.
+    </p>
+
+    <h2>What gets sent off your device</h2>
+    <p>
+      To look up lyrics, the track's artist, title, album, and duration are sent to
+      the following third-party lyrics APIs. No account identifiers, browsing
+      history, or any other personal data is included or attached.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>What's sent</th>
+          <th>When</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><a href="https://lrclib.net" target="_blank" rel="noreferrer">LRCLIB</a></td>
+          <td>Artist, title, album, duration</td>
+          <td>First lookup for a track</td>
+        </tr>
+        <tr>
+          <td>
+            <a href="https://lyricsovh.docs.apiary.io/" target="_blank" rel="noreferrer"
+              >lyrics.ovh</a
+            >
+          </td>
+          <td>Artist, title</td>
+          <td>Only if LRCLIB has no match for that track</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      These are independent, free, keyless lyrics databases. The extension does not
+      operate its own server and no data passes through any server run by the
+      extension's developer — requests go straight from your browser to these APIs.
+    </p>
+
+    <h2>What's stored locally</h2>
+    <p>
+      The extension caches lyrics lookups and your settings (sync offset, overlay
+      text size) using the browser's local extension storage
+      (<code>chrome.storage</code>). This data stays on your device, is never
+      transmitted anywhere, and is not synced to any account. Uninstalling the
+      extension removes it.
+    </p>
+
+    <h2>What this extension does not do</h2>
+    <ul>
+      <li>No analytics, telemetry, or usage tracking</li>
+      <li>No advertising or ad networks</li>
+      <li>No sale or sharing of data with third parties beyond the lyrics lookups above</li>
+      <li>No accounts, sign-in, or user profiles</li>
+    </ul>
+
+    <h2>Permissions this extension requests</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Permission</th>
+          <th>Why</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>storage</code></td>
+          <td>Local caching of lyrics and your settings, described above.</td>
+        </tr>
+        <tr>
+          <td><code>sidePanel</code></td>
+          <td>Shows the controls (sync offset, text size, plain-text lyrics) in the browser's side panel.</td>
+        </tr>
+        <tr>
+          <td><code>https://lrclib.net/*</code></td>
+          <td>The primary lyrics lookup described above.</td>
+        </tr>
+        <tr>
+          <td><code>https://api.lyrics.ovh/*</code></td>
+          <td>The fallback lyrics lookup described above, used only when LRCLIB has no match.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Changes to this policy</h2>
+    <p>
+      If this policy changes, the "Last updated" date at the top of this page will
+      change accordingly.
+      <!-- TODO: once this repo has a public GitHub URL, link it here: -->
+      <!-- Material changes will also be noted in the extension's release notes on the
+      <a href="[repo URL]" target="_blank" rel="noreferrer">GitHub repository</a>. -->
+    </p>
+
+    <h2>Contact</h2>
+    <p>
+      Questions about this policy or the extension can be sent to
+      <!-- TODO: replace with a contact email or a link to a GitHub issues page -->
+      <strong>[add a contact email or GitHub issues link here]</strong>.
+    </p>
+  </body>
+</html>
